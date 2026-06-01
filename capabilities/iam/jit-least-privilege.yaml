@@ -1,0 +1,75 @@
+id: cap-jit-least-privilege
+title: Just-in-time least-privilege access
+
+capability_statement: |
+  Privileged access to production resources is granted just-in-time
+  through a PAM workflow. Standing privileges for human users are
+  limited to read-only roles; any elevated action requires an explicit
+  time-bounded request (maximum 4 hours) with documented business
+  justification and peer approval. Sessions are terminated automatically
+  at expiry and all privileged activity is logged to the central SIEM.
+
+  Role assignments are reviewed quarterly via automated access
+  certification campaigns; orphaned or unused privileges are revoked.
+
+applies_when:
+  impact_levels: [Low, Moderate]
+  cloud_providers: [multi]
+
+satisfies:
+  fedramp_20x:
+    - ksi: KSI-IAM-04
+      coverage: full
+    - ksi: KSI-IAM-05
+      coverage: full
+    - ksi: KSI-IAM-07
+      coverage: partial
+
+  fedramp_rev5:
+    - control: AC-2
+      coverage: partial
+      parts: [a, b, c, d, e, f, g, h, i, j]
+      implementation_status: Implemented
+    - control: AC-2(1)
+      coverage: full
+      implementation_status: Implemented
+    - control: AC-5
+      coverage: full
+      implementation_status: Implemented
+    - control: AC-6
+      coverage: full
+      implementation_status: Implemented
+    - control: AC-6(1)
+      coverage: full
+      implementation_status: Implemented
+    - control: AC-6(2)
+      coverage: full
+      implementation_status: Implemented
+
+  soc2:
+    - criterion: CC6.3
+
+evidence:
+  - id: ev-pam-grant-log
+    type: api_export
+    source: aws
+    collector: evidence/aws/iam_jit_grants.sh
+    schedule: continuous
+    validation_method: automated
+
+  - id: ev-quarterly-access-cert
+    type: document
+    source: common
+    schedule: quarterly
+    validation_method: hybrid
+
+terraform_modules:
+  - cloud: aws
+    path: terraform/aws/modules/iam-jit-roles
+
+policy_rules:
+  - policies/iam/no-standing-admin.rego
+
+provenance:
+  frmr_version: v0.9.0-beta
+  last_reviewed: 2026-05-15

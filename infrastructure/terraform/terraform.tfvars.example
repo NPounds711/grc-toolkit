@@ -1,0 +1,15 @@
+# Copy this to terraform.tfvars and fill in. terraform.tfvars is gitignored.
+
+aws_region       = "us-east-1"
+site_bucket_name = "grc-toolkit-docs-<your-suffix>"   # must be globally unique
+
+# Set to your GitHub repo path (e.g. "nicolepounds/grc-toolkit"). Only this
+# repo's main branch can assume the deploy role via OIDC.
+github_org_repo = "<your-github-user>/grc-toolkit"
+
+# Set true the FIRST time you run terraform apply (creates the OIDC provider).
+# Set false on subsequent runs once the provider exists in your account.
+create_github_oidc_provider = true
+
+# Optional custom domain. Leave as null until you have one ready.
+# custom_domain = "grc-toolkit.example.com"

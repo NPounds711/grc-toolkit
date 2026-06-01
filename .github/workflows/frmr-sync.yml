@@ -1,0 +1,71 @@
+name: frmr-sync
+
+# Daily check against FedRAMP's machine-readable docs.
+# If anything changes upstream, this opens a PR and runs the drift tests.
+# A passing PR means our capability mappings still match the new release.
+# A failing PR means a KSI we depend on was renamed, retired, or restructured —
+# someone needs to update the affected capabilities.
+
+on:
+  schedule:
+    - cron: '0 6 * * *'    # 06:00 UTC daily
+  workflow_dispatch: {}
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+
+      - run: pip install -r requirements.txt
+
+      - name: Pull latest FRMR
+        run: python sync/frmr_sync.py --target frameworks/fedramp-20x/
+
+      - name: Run drift tests
+        id: drift
+        run: |
+          set +e
+          python -m pytest tests/test_drift.py -v --tb=short > drift.log 2>&1
+          echo "drift_status=$?" >> $GITHUB_OUTPUT
+          cat drift.log
+
+      - name: Detect changes
+        id: diff
+        run: |
+          if git diff --quiet; then
+            echo "changed=false" >> $GITHUB_OUTPUT
+          else
+            echo "changed=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Open PR if FRMR changed
+        if: steps.diff.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@v6
+        with:
+          commit-message: "chore(frmr): sync FedRAMP machine-readable docs"
+          branch: frmr-sync/auto
+          title: "FRMR Sync — review impact on capabilities"
+          body: |
+            Automated sync from `github.com/FedRAMP/docs`.
+
+            Drift test status: ${{ steps.drift.outputs.drift_status == '0' && '✅ no breaking changes' || '❌ breaking changes detected' }}
+
+            <details><summary>Drift log</summary>
+
+            ```
+            ${{ steps.drift.outputs.drift_log }}
+            ```
+            </details>
+
+            **If drift tests fail:** at least one capability references a KSI
+            that was renamed, retired, or restructured upstream. Inspect
+            `tests/test_drift.py` output, update the affected capability
+            YAML files, and push to this branch.
+          labels: frmr-sync, compliance

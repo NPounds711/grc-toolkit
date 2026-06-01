@@ -1,0 +1,58 @@
+name: docs-deploy
+
+# Builds the MkDocs site, uploads to S3, invalidates CloudFront.
+# Triggered on push to main. Uses GitHub OIDC to assume an AWS role —
+# no static keys in the repo. The role is provisioned by
+# infrastructure/terraform/main.tf.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/**'
+      - 'capabilities/**'
+      - 'mkdocs.yml'
+      - 'scripts/build_docs.py'
+      - '.github/workflows/docs-deploy.yml'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  id-token: write   # required for OIDC
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - run: pip install -r requirements.txt mkdocs mkdocs-material
+
+      - name: Generate dynamic docs pages
+        run: python scripts/build_docs.py
+
+      - name: Build site
+        run: mkdocs build --strict
+
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Sync site to S3
+        run: |
+          aws s3 sync site/ "s3://${{ secrets.AWS_SITE_BUCKET }}/" \
+            --delete \
+            --cache-control "public, max-age=300"
+
+      - name: Invalidate CloudFront
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id "${{ secrets.AWS_CLOUDFRONT_DISTRIBUTION_ID }}" \
+            --paths "/*"

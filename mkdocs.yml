@@ -1,0 +1,67 @@
+site_name: grc-toolkit
+site_description: Dual-format GRC tooling for FedRAMP Rev 5 and 20x. Author once, render to any framework.
+site_url: https://grc-toolkit.example.com/
+
+repo_url: https://github.com/REPLACE_WITH_YOUR_ORG/grc-toolkit
+repo_name: grc-toolkit
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.indexes
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.action.edit
+    - toc.follow
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - toc:
+      permalink: true
+
+plugins:
+  - search
+
+nav:
+  - Home: index.md
+  - Capabilities catalog: capabilities.md
+  - Coverage matrix: coverage.md
+  - Architecture: ARCHITECTURE.md
+  - 3PAO Validation: 3pao-validated.md
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/REPLACE_WITH_YOUR_ORG/grc-toolkit

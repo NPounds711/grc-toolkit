@@ -1,0 +1,109 @@
+id: cap-mfa-phishing-resistant
+title: Phishing-resistant MFA for all human users
+
+capability_statement: |
+  All human user authentication to the cloud service offering requires
+  phishing-resistant multi-factor authentication using FIDO2/WebAuthn
+  hardware security keys, enforced via the organization's identity
+  provider (Okta) with no bypass path. Authentication flows that do not
+  present a phishing-resistant factor are blocked at the IdP level
+  regardless of source IP, device posture, or session age. Service
+  accounts are out of scope for this capability (see cap-non-user-auth)
+  and use certificate-based authentication.
+
+  Enforcement is validated continuously via automated Okta policy export.
+  Enrollment status for the human user population is audited monthly.
+
+applies_when:
+  impact_levels: [Low, Moderate]
+  cloud_providers: [multi]
+
+satisfies:
+  fedramp_20x:
+    - ksi: KSI-IAM-01
+      coverage: full
+      notes: "Phishing-resistant MFA is the entire scope of KSI-IAM-01."
+    - ksi: KSI-IAM-02
+      coverage: partial
+      notes: |
+        Passwordless via WebAuthn is the default path. Where a fallback
+        password+MFA flow exists for break-glass accounts, that portion
+        is covered by cap-break-glass-auth.
+
+  fedramp_rev5:
+    - control: IA-2
+      coverage: full
+      parts: [a, b, c]
+      implementation_status: Implemented
+    - control: IA-2(1)
+      coverage: full
+      implementation_status: Implemented
+    - control: IA-2(2)
+      coverage: full
+      implementation_status: Implemented
+    - control: IA-2(8)
+      coverage: full
+      implementation_status: Implemented
+    - control: IA-5(1)
+      coverage: partial
+      parts: [a]
+      implementation_status: Partially Implemented
+      # IA-5(1) password requirements only partially apply since most
+      # auth is passwordless; remaining parts covered by cap-break-glass-auth
+
+  soc2:
+    - criterion: CC6.1
+    - criterion: CC6.6
+
+  nist_csf_2:
+    - subcategory: PR.AA-01
+    - subcategory: PR.AA-03
+
+evidence:
+  - id: ev-okta-mfa-policy-export
+    type: api_export
+    source: okta
+    collector: evidence/okta/mfa_policy_export.sh
+    schedule: daily
+    validation_method: automated
+    validation_rule: |
+      .factors[] | select(. == "webauthn" or . == "fido2") | length > 0
+
+  - id: ev-okta-enrollment-audit
+    type: api_export
+    source: okta
+    collector: evidence/okta/enrollment_audit.sh
+    schedule: monthly
+    validation_method: automated
+    validation_rule: |
+      [.users[] | select(.status == "ACTIVE")
+        | select(.factors | any(.type == "webauthn"))] | length
+        == [.users[] | select(.status == "ACTIVE")] | length
+
+  - id: ev-okta-policy-screenshot
+    type: document
+    source: okta
+    schedule: quarterly
+    validation_method: manual
+
+terraform_modules:
+  - cloud: aws
+    path: terraform/aws/modules/okta-mfa-enforcement
+  - cloud: azure
+    path: terraform/azure/modules/entra-conditional-access-mfa
+  - cloud: gcp
+    path: terraform/gcp/modules/identity-platform-mfa
+
+policy_rules:
+  - policies/iam/mfa-phishing-resistant.rego
+
+provenance:
+  frmr_version: v0.9.0-beta
+  validated_in_assessment:
+    - csp: Paramify
+      assessor_3pao: Coalfire
+      date: 2025-07-10
+      url: https://github.com/paramify/fedramp-20x-pilot
+  last_reviewed: 2026-05-15
+  reviewers:
+    - "@grc-eng-toolkit-maintainers"

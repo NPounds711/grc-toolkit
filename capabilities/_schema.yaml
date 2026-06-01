@@ -1,0 +1,115 @@
+# Schema for a Capability — the canonical source of truth.
+# Every capability file in this repo MUST validate against this schema.
+# Renderers read capabilities; they NEVER hardcode framework-specific text.
+
+$schema: "http://json-schema.org/draft-07/schema#"
+title: Capability
+type: object
+required: [id, title, capability_statement, satisfies, evidence, provenance]
+properties:
+  id:
+    type: string
+    pattern: "^cap-[a-z0-9-]+$"
+    description: "Stable ID. Never reuse. Never rename. Use cap-<slug>."
+
+  title:
+    type: string
+    description: "Short human-readable name."
+
+  capability_statement:
+    type: string
+    description: |
+      The single source-of-truth narrative describing what is actually
+      true about the system. Renderers may wrap, truncate, or template
+      this — but the underlying claim must remain consistent everywhere.
+
+  applies_when:
+    type: object
+    description: "Optional gating — when this capability is in scope."
+    properties:
+      impact_levels: { type: array, items: { enum: [Low, Moderate, High] } }
+      cloud_providers: { type: array, items: { enum: [aws, azure, gcp, multi] } }
+
+  satisfies:
+    type: object
+    description: "Cross-framework mappings. Adding a framework is additive."
+    properties:
+      fedramp_20x:
+        type: array
+        items:
+          type: object
+          required: [ksi]
+          properties:
+            ksi: { type: string, pattern: "^KSI-[A-Z]+-[0-9]+$" }
+            coverage: { enum: [full, partial, contributes_to] }
+            notes: { type: string }
+
+      fedramp_rev5:
+        type: array
+        items:
+          type: object
+          required: [control]
+          properties:
+            control: { type: string, description: "e.g. IA-2, IA-2(1), AC-2(7)" }
+            coverage: { enum: [full, partial, contributes_to] }
+            parts: { type: array, items: { type: string } }  # a, b, c
+            implementation_status:
+              enum: [Implemented, Partially Implemented, Planned, Alternative, Not Applicable]
+
+      soc2:
+        type: array
+        items:
+          type: object
+          properties:
+            criterion: { type: string }   # e.g. CC6.1
+
+      nist_csf_2:
+        type: array
+        items:
+          type: object
+          properties:
+            subcategory: { type: string }   # e.g. PR.AA-01
+
+  evidence:
+    type: array
+    description: "Machine-collectible proof. Lives in evidence/."
+    items:
+      type: object
+      required: [id, type, source]
+      properties:
+        id: { type: string }
+        type: { enum: [api_export, cli_output, terraform_plan, log_query, document, lms_export, sbom] }
+        source: { type: string, description: "aws|azure|gcp|okta|github|knowbe4|..." }
+        collector: { type: string, description: "Path to script under evidence/" }
+        schedule: { enum: [continuous, daily, weekly, monthly, quarterly, on_change] }
+        validation_method: { enum: [automated, manual, pipeline, hybrid] }
+        validation_rule: { type: string, description: "OPA/jq/regex expression" }
+
+  terraform_modules:
+    type: array
+    items:
+      type: object
+      properties:
+        cloud: { enum: [aws, azure, gcp] }
+        path: { type: string }
+
+  policy_rules:
+    type: array
+    items: { type: string }
+
+  provenance:
+    type: object
+    required: [last_reviewed]
+    properties:
+      frmr_version: { type: string, description: "FRMR release this was validated against, e.g. v0.9.0-beta" }
+      validated_in_assessment:
+        type: array
+        items:
+          type: object
+          properties:
+            csp: { type: string }
+            assessor_3pao: { type: string }
+            date: { type: string, format: date }
+            url: { type: string }
+      last_reviewed: { type: string, format: date }
+      reviewers: { type: array, items: { type: string } }
