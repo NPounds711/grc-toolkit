@@ -64,7 +64,7 @@ The cost of a FedRAMP release becomes a PR review, not a content rewrite.
 ## Quick start
 
 ```bash
-git clone https://github.com/REPLACE_WITH_YOUR_ORG/grc-toolkit.git
+git clone https://github.com/NPounds711/grc-toolkit.git
 cd grc-toolkit
 pip install -r requirements.txt
 
@@ -76,7 +76,7 @@ python -m renderers.fedramp_20x --out samples/20x.json \
     --csp "Acme Federal" --cso "Acme Workspace" --impact Low
 ```
 
-See [Contributing](https://github.com/REPLACE_WITH_YOUR_ORG/grc-toolkit/blob/main/CONTRIBUTING.md)
+See [Contributing](https://github.com/NPounds711/grc-toolkit/blob/main/CONTRIBUTING.md)
 for how to add a capability, evidence collector, or renderer.
 
 ## License

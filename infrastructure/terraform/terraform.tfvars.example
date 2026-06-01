@@ -5,7 +5,7 @@ site_bucket_name = "grc-toolkit-docs-<your-suffix>"   # must be globally unique
 
 # Set to your GitHub repo path (e.g. "nicolepounds/grc-toolkit"). Only this
 # repo's main branch can assume the deploy role via OIDC.
-github_org_repo = "<your-github-user>/grc-toolkit"
+github_org_repo = "NPounds711/grc-toolkit"
 
 # Set true the FIRST time you run terraform apply (creates the OIDC provider).
 # Set false on subsequent runs once the provider exists in your account.

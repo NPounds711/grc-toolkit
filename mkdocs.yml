@@ -2,7 +2,7 @@ site_name: grc-toolkit
 site_description: Dual-format GRC tooling for FedRAMP Rev 5 and 20x. Author once, render to any framework.
 site_url: https://grc-toolkit.example.com/
 
-repo_url: https://github.com/REPLACE_WITH_YOUR_ORG/grc-toolkit
+repo_url: https://github.com/NPounds711/grc-toolkit
 repo_name: grc-toolkit
 edit_uri: edit/main/docs/
 
@@ -64,4 +64,4 @@ nav:
 extra:
   social:
     - icon: fontawesome/brands/github
-      link: https://github.com/REPLACE_WITH_YOUR_ORG/grc-toolkit
+      link: https://github.com/NPounds711/grc-toolkit
