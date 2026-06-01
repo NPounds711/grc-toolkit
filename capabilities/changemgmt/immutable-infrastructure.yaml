@@ -1,0 +1,127 @@
+id: cap-immutable-infrastructure
+title: Immutable infrastructure via GitOps with mandatory peer review
+
+capability_statement: |
+  All production infrastructure and application configuration is
+  managed exclusively through declarative code (Terraform for cloud
+  infrastructure, Kubernetes manifests for workloads, Helm or
+  Kustomize for configuration). Direct console / CLI changes to
+  production resources are blocked by an organization-level Service
+  Control Policy that denies every mutating action by any principal
+  except the GitOps deployment role.
+
+  Every change is gated by:
+    1. A pull request against the main branch of the IaC repository.
+    2. At least one peer approval from a CODEOWNER who is not the
+       PR author.
+    3. CI passing static analysis (tflint, checkov), unit tests,
+       OPA policy checks, and a Terraform plan.
+    4. An immutable signed deployment artifact produced by the
+       CI pipeline. Container images are signed with Cosign and
+       verified at admission time by the Kubernetes cluster.
+
+  Compute resources are replaced rather than mutated: containers are
+  rebuilt and redeployed on every code change; EC2 / VM instances are
+  cycled via blue/green or rolling deploys driven by ASG / MIG /
+  VMSS configuration. SSH and RDP access to production hosts is
+  disabled at the AMI / image level.
+
+applies_when:
+  impact_levels: [Low, Moderate, High]
+  cloud_providers: [multi]
+
+satisfies:
+  fedramp_20x:
+    - ksi: KSI-CMT-01
+      coverage: full
+      notes: "All changes go through code review with documented approver."
+    - ksi: KSI-CMT-02
+      coverage: full
+      notes: "Immutable artifacts, signed and verified at deploy time."
+    - ksi: KSI-CMT-04
+      coverage: partial
+      notes: "Emergency-change procedure (post-hoc PR for break-glass) covered by cap-emergency-change."
+
+  fedramp_rev5:
+    - control: CM-2
+      coverage: full
+      implementation_status: Implemented
+    - control: CM-3
+      coverage: full
+      implementation_status: Implemented
+    - control: CM-3(2)
+      coverage: full
+      implementation_status: Implemented
+    - control: CM-4
+      coverage: full
+      implementation_status: Implemented
+    - control: CM-5
+      coverage: full
+      implementation_status: Implemented
+    - control: CM-5(1)
+      coverage: full
+      implementation_status: Implemented
+    - control: CM-7
+      coverage: partial
+      implementation_status: Implemented
+      # Least-functionality posture for the image baseline is here; service-level
+      # least privilege lives in cap-jit-least-privilege.
+    - control: SA-10
+      coverage: full
+      implementation_status: Implemented
+
+  soc2:
+    - criterion: CC8.1
+
+  nist_csf_2:
+    - subcategory: PR.PS-01
+    - subcategory: PR.PS-06
+
+evidence:
+  - id: ev-github-merge-protection
+    type: api_export
+    source: github
+    collector: evidence/common/github_branch_protection.sh
+    schedule: daily
+    validation_method: automated
+    validation_rule: |
+      .protection.required_pull_request_reviews.required_approving_review_count >= 1
+      and .protection.required_pull_request_reviews.require_code_owner_reviews == true
+      and .protection.enforce_admins.enabled == true
+
+  - id: ev-aws-scp-deny-console-mutations
+    type: api_export
+    source: aws
+    collector: evidence/aws/scp_console_deny.sh
+    schedule: weekly
+    validation_method: automated
+
+  - id: ev-image-signature-verification
+    type: cli_output
+    source: common
+    collector: evidence/common/cosign_verify_recent.sh
+    schedule: daily
+    validation_method: automated
+
+  - id: ev-terraform-state-drift
+    type: terraform_plan
+    source: common
+    collector: evidence/common/terraform_drift_diff.sh
+    schedule: daily
+    validation_method: automated
+    validation_rule: |
+      .drift_count == 0
+
+terraform_modules:
+  - cloud: aws
+    path: terraform/aws/modules/scp-immutable-infra
+
+policy_rules:
+  - policies/changemgmt/peer-review-required.rego
+  - policies/changemgmt/no-direct-console-mutations.rego
+
+provenance:
+  frmr_version: v0.9.0-beta
+  last_reviewed: 2026-06-01
+  reviewers:
+    - "@grc-eng-toolkit-maintainers"

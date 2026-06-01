@@ -1,0 +1,139 @@
+id: cap-cloudtrail-multi-region
+title: Multi-region audit logging with immutable storage
+
+capability_statement: |
+  All cloud API activity is captured by the provider's native audit-log
+  service (AWS CloudTrail, GCP Cloud Audit Logs, Azure Monitor Activity
+  Log) with multi-region coverage and management-event + data-event
+  logging enabled. Logs are written to a dedicated, versioned, MFA-delete
+  enabled object storage bucket with Object Lock in Compliance mode for
+  a retention period of one year minimum.
+
+  Logs are forwarded to the central SIEM within 5 minutes of generation
+  via streaming integration (CloudWatch Logs → Kinesis → SIEM, or
+  Pub/Sub → SIEM, or Event Hubs → SIEM). Log integrity is verified by
+  the provider's native signing (CloudTrail log file validation, GCP
+  log signatures). Access to the log bucket is restricted to the
+  security operations team via a deny-by-default bucket policy.
+
+applies_when:
+  impact_levels: [Low, Moderate, High]
+  cloud_providers: [multi]
+
+satisfies:
+  fedramp_20x:
+    - ksi: KSI-MLA-01
+      coverage: full
+      notes: "Comprehensive audit event capture across all cloud APIs."
+    - ksi: KSI-MLA-02
+      coverage: full
+      notes: "Log forwarding to SIEM and integrity protection."
+    - ksi: KSI-MLA-05
+      coverage: partial
+      notes: |
+        Retention period is one year by default. High impact systems
+        requiring three-year retention should override the Terraform
+        module's retention_days parameter.
+
+  fedramp_rev5:
+    - control: AU-2
+      coverage: full
+      implementation_status: Implemented
+    - control: AU-3
+      coverage: full
+      implementation_status: Implemented
+    - control: AU-3(1)
+      coverage: full
+      implementation_status: Implemented
+    - control: AU-4
+      coverage: full
+      implementation_status: Implemented
+    - control: AU-6
+      coverage: partial
+      implementation_status: Partially Implemented
+      # AU-6 detection logic in the SIEM is covered by cap-siem-detections
+    - control: AU-9
+      coverage: full
+      implementation_status: Implemented
+    - control: AU-9(2)
+      coverage: full
+      implementation_status: Implemented
+    - control: AU-11
+      coverage: full
+      implementation_status: Implemented
+    - control: AU-12
+      coverage: full
+      implementation_status: Implemented
+
+  soc2:
+    - criterion: CC7.2
+    - criterion: CC7.3
+
+  nist_csf_2:
+    - subcategory: DE.CM-01
+    - subcategory: DE.CM-03
+
+evidence:
+  - id: ev-aws-cloudtrail-config
+    type: api_export
+    source: aws
+    collector: evidence/aws/cloudtrail_config.sh
+    schedule: daily
+    validation_method: automated
+    validation_rule: |
+      .trails[] | select(
+        .IsMultiRegionTrail == true and
+        .LogFileValidationEnabled == true and
+        .HasInsightSelectors == true
+      ) | length > 0
+
+  - id: ev-aws-trail-bucket-protection
+    type: api_export
+    source: aws
+    collector: evidence/aws/cloudtrail_bucket_protection.sh
+    schedule: daily
+    validation_method: automated
+    validation_rule: |
+      .bucket.object_lock.configuration.ObjectLockEnabled == "Enabled"
+      and .bucket.versioning.Status == "Enabled"
+      and .bucket.mfa_delete == "Enabled"
+
+  - id: ev-siem-ingestion-lag
+    type: log_query
+    source: common
+    collector: evidence/common/siem_ingestion_lag.sh
+    schedule: continuous
+    validation_method: automated
+    validation_rule: |
+      .p99_ingestion_lag_seconds < 300
+
+  - id: ev-gcp-audit-log-config
+    type: api_export
+    source: gcp
+    collector: evidence/gcp/audit_log_config.sh
+    schedule: daily
+    validation_method: automated
+
+  - id: ev-azure-activity-log-config
+    type: api_export
+    source: azure
+    collector: evidence/azure/activity_log_config.sh
+    schedule: daily
+    validation_method: automated
+
+terraform_modules:
+  - cloud: aws
+    path: terraform/aws/modules/cloudtrail-multi-region
+  - cloud: gcp
+    path: terraform/gcp/modules/audit-log-sink
+  - cloud: azure
+    path: terraform/azure/modules/activity-log-diagnostic
+
+policy_rules:
+  - policies/logging/audit-log-coverage.rego
+
+provenance:
+  frmr_version: v0.9.0-beta
+  last_reviewed: 2026-06-01
+  reviewers:
+    - "@grc-eng-toolkit-maintainers"

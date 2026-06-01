@@ -33,8 +33,9 @@ satisfies:
   fedramp_rev5:
     - control: IA-2
       coverage: full
-      parts: [a, b, c]
       implementation_status: Implemented
+      # IA-2 in 800-53r5 is a single statement; replay resistance lives
+      # in IA-2(8) below. No parts a/b/c.
     - control: IA-2(1)
       coverage: full
       implementation_status: Implemented

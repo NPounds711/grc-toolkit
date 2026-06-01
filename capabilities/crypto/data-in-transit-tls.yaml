@@ -1,0 +1,94 @@
+id: cap-data-in-transit-tls
+title: Data in transit protected with TLS 1.2+
+
+capability_statement: |
+  All network traffic carrying federal customer information is
+  protected in transit using TLS 1.2 or higher, with cipher suites
+  restricted to FIPS-approved AEAD algorithms (TLS_AES_128_GCM_SHA256,
+  TLS_AES_256_GCM_SHA384, TLS_CHACHA20_POLY1305_SHA256, plus equivalent
+  TLS 1.2 GCM suites). TLS 1.0, 1.1, and all non-AEAD cipher suites
+  are explicitly disabled at every termination point.
+
+  This applies to: ingress from the public internet (CDN / load
+  balancers), service-to-service traffic inside the boundary,
+  database connections, log forwarding, and outbound calls to managed
+  cloud APIs. mTLS is enforced between services where the workload
+  type supports it. TLS configuration is continuously validated by
+  automated scan.
+
+applies_when:
+  impact_levels: [Low, Moderate, High]
+  cloud_providers: [multi]
+
+satisfies:
+  fedramp_20x:
+    - ksi: KSI-SVC-01
+      coverage: full
+      notes: "TLS for data in transit at all boundary and intra-service points."
+    - ksi: KSI-SVC-04
+      coverage: partial
+      notes: "Key management for TLS certs covered here; KMS keys covered by cap-data-at-rest-cmk."
+
+  fedramp_rev5:
+    - control: SC-8
+      coverage: full
+      implementation_status: Implemented
+    - control: SC-8(1)
+      coverage: full
+      implementation_status: Implemented
+    - control: SC-13
+      coverage: partial
+      implementation_status: Implemented
+      # SC-13 fully implemented when combined with cap-data-at-rest-cmk
+    - control: SC-23
+      coverage: full
+      implementation_status: Implemented
+
+  soc2:
+    - criterion: CC6.7
+
+  nist_csf_2:
+    - subcategory: PR.DS-02
+
+evidence:
+  - id: ev-tls-scan-edge
+    type: cli_output
+    source: common
+    collector: evidence/common/tls_scan.sh
+    schedule: weekly
+    validation_method: automated
+    validation_rule: |
+      .endpoints[] | select(.tls_versions[] | . == "1.0" or . == "1.1") | length == 0
+
+  - id: ev-aws-elb-ssl-policy
+    type: api_export
+    source: aws
+    collector: evidence/aws/elb_ssl_policies.sh
+    schedule: daily
+    validation_method: automated
+    validation_rule: |
+      .load_balancers[] | select(.ssl_policy | test("TLS-1-2|TLS-1-3") | not) | length == 0
+
+  - id: ev-cert-inventory
+    type: api_export
+    source: aws
+    collector: evidence/aws/acm_cert_inventory.sh
+    schedule: weekly
+    validation_method: automated
+
+terraform_modules:
+  - cloud: aws
+    path: terraform/aws/modules/alb-tls-strict
+  - cloud: gcp
+    path: terraform/gcp/modules/lb-tls-strict
+  - cloud: azure
+    path: terraform/azure/modules/appgw-tls-strict
+
+policy_rules:
+  - policies/crypto/tls-strict.rego
+
+provenance:
+  frmr_version: v0.9.0-beta
+  last_reviewed: 2026-06-01
+  reviewers:
+    - "@grc-eng-toolkit-maintainers"

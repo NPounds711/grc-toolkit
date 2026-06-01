@@ -1,0 +1,111 @@
+id: cap-data-at-rest-cmk
+title: Data at rest encrypted with customer-managed keys
+
+capability_statement: |
+  All persistent data stores holding federal customer information are
+  encrypted at rest using AES-256 with customer-managed keys (CMKs) in
+  the cloud provider's KMS. Keys are rotated automatically on a yearly
+  schedule; key access is restricted via IAM policies that deny use by
+  any principal outside an explicitly enumerated allow-list.
+
+  This includes object storage (S3 / GCS / Azure Blob), block storage
+  attached to compute instances, managed databases (RDS, Cloud SQL,
+  Azure SQL), and managed message queues. Backups inherit encryption
+  from the source dataset. Key material never leaves the FIPS 140-2
+  validated HSM boundary of the cloud KMS service.
+
+applies_when:
+  impact_levels: [Low, Moderate, High]
+  cloud_providers: [multi]
+
+satisfies:
+  fedramp_20x:
+    - ksi: KSI-SVC-04
+      coverage: full
+      notes: "Cryptographic key management — customer-managed keys with annual rotation."
+    - ksi: KSI-SVC-06
+      coverage: full
+      notes: "Encryption at rest for all persistent data stores."
+
+  fedramp_rev5:
+    - control: SC-13
+      coverage: full
+      implementation_status: Implemented
+    - control: SC-28
+      coverage: full
+      implementation_status: Implemented
+    - control: SC-28(1)
+      coverage: full
+      implementation_status: Implemented
+    - control: SC-12
+      coverage: partial
+      implementation_status: Implemented
+      # Key establishment partially covered; full lifecycle managed by KMS
+    - control: SC-12(2)
+      coverage: full
+      implementation_status: Implemented
+    - control: SC-12(3)
+      coverage: full
+      implementation_status: Implemented
+
+  soc2:
+    - criterion: CC6.1
+    - criterion: CC6.7
+
+  nist_csf_2:
+    - subcategory: PR.DS-01
+
+evidence:
+  - id: ev-aws-kms-rotation-status
+    type: api_export
+    source: aws
+    collector: evidence/aws/kms_rotation_status.sh
+    schedule: daily
+    validation_method: automated
+    validation_rule: |
+      .KeyMetadata[]
+        | select(.KeyManager == "CUSTOMER")
+        | select(.KeyRotationStatus.KeyRotationEnabled == false)
+        | length == 0
+
+  - id: ev-aws-storage-encryption-state
+    type: api_export
+    source: aws
+    collector: evidence/aws/storage_encryption_state.sh
+    schedule: daily
+    validation_method: automated
+    validation_rule: |
+      [.s3_buckets[] | select(.encryption == null or .encryption.SSEAlgorithm != "aws:kms")] | length == 0
+      and [.rds_instances[] | select(.StorageEncrypted != true)] | length == 0
+      and [.ebs_volumes[] | select(.Encrypted != true)] | length == 0
+
+  - id: ev-gcp-cmek-coverage
+    type: api_export
+    source: gcp
+    collector: evidence/gcp/cmek_coverage.sh
+    schedule: daily
+    validation_method: automated
+
+  - id: ev-azure-storage-encryption
+    type: api_export
+    source: azure
+    collector: evidence/azure/storage_encryption.sh
+    schedule: daily
+    validation_method: automated
+
+terraform_modules:
+  - cloud: aws
+    path: terraform/aws/modules/kms-cmk-with-rotation
+  - cloud: gcp
+    path: terraform/gcp/modules/cmek-key-ring
+  - cloud: azure
+    path: terraform/azure/modules/key-vault-cmk
+
+policy_rules:
+  - policies/crypto/encryption-at-rest.rego
+
+provenance:
+  frmr_version: v0.9.0-beta
+  last_reviewed: 2026-06-01
+  reviewers:
+    - "@grc-eng-toolkit-maintainers"
