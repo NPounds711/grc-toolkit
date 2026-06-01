@@ -4,14 +4,27 @@
 
 ## What problem this solves
 
-FedRAMP has two parallel authorization paths right now:
+**Compliance documentation is hand-typed today.** An engineer reads the AWS console, types a paragraph in Word that says "we use FIDO2 hardware keys," and a 3PAO reads that paragraph and tries to verify it. The paragraph and the live system drift the moment someone changes an Okta policy. Nobody catches it until the next assessment.
 
-- **Rev 5** (the traditional path) — most CSPs are here today. Submission is currently a Word SSP for 3PAO review. **FedRAMP PMO has signaled they will mandate machine-readable Rev 5 packages**, most likely landing on OSCAL since NIST + FedRAMP have already published OSCAL profiles for the Rev 5 baselines.
-- **20x** (the new path) — submission is a machine-readable FRMR package keyed by KSI. Optional today (Phase 2 pilot ended March 2026); general availability in Phase 3 later in 2026.
+The fix is to **never let a human hand-type the implementation status**. Instead, the toolkit:
 
-In practice a CSP picks one path. But the *next* CSP might pick the other, and your current Rev 5 CSP will likely need to migrate to 20x within the next two years. **The toolkit's job: make sure the *source* you write is the same regardless of which path you're on.**
+1. **Connectors** call the source system directly (Okta, AWS IAM, KMS, CloudTrail, …) and return raw evidence.
+2. **Aggregators** apply deterministic rules to that evidence and emit one per-control determination, timestamped, with the live numbers ("3/3 privileged users compliant; 4/4 total humans compliant").
+3. **Renderers** take those determinations and emit whatever FedRAMP-shaped document the CSP needs.
 
-That source is a **capability** — a small Python module (an aggregator) that knows how to look at the live system, decide whether a control area is implemented, and emit one ControlDetermination per FedRAMP control it covers. The three renderers all consume the same determinations:
+The implementation status is **observed**, not asserted. A 3PAO can re-run the tool and get byte-identical output, because it's deterministic Python — not an LLM reasoning over the evidence.
+
+## Pick your FedRAMP path
+
+A CSP picks **one** FedRAMP path. The toolkit supports both today, so you don't have to refactor your authoring layer if you change paths or migrate from Rev 5 to 20x later:
+
+- **Rev 5 (traditional)** — Submit a Word SSP for 3PAO review. What most CSPs do today.
+- **Rev 5 (machine-readable)** — FedRAMP PMO has signaled they will mandate machine-readable Rev 5 packages, most likely on OSCAL since NIST + FedRAMP already publish OSCAL profiles for the Rev 5 baselines.
+- **20x** — Submit a FRMR JSON package keyed by KSI. Optional today (Phase 2 pilot ended March 2026); general availability later in 2026.
+
+You **don't run more than one path at a time** — that's not how FedRAMP works. But because the source is the same set of aggregators, switching paths later doesn't require rewriting any compliance logic. That's the actual value: **future-proofing your evidence pipeline against PMO direction.**
+
+The three renderers all consume the same determinations:
 
 | Output | Format | Audience | Status |
 |---|---|---|---|

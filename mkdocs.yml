@@ -1,5 +1,5 @@
 site_name: grc-toolkit
-site_description: Dual-format GRC tooling for FedRAMP Rev 5 and 20x. Author once, render to any framework.
+site_description: Machine-readable compliance evidence for FedRAMP. Pulls directly from AWS / GCP / Azure / Okta / SIEM, runs deterministic Python aggregators against it, and emits Rev 5 or 20x packages — whichever path the CSP is on.
 site_url: https://d15uxqlnhvt2ty.cloudfront.net/
 
 repo_url: https://github.com/NPounds711/grc-toolkit

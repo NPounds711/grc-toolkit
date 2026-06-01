@@ -1,54 +1,57 @@
 # grc-toolkit
 
-**Dual-format GRC tooling for FedRAMP Rev 5 and 20x. Author once, render to any framework.**
+**Machine-readable compliance evidence, pulled directly from the source.**
 
-## The problem
+Connect to AWS / GCP / Azure / Okta / SIEM / IdP. Run deterministic Python aggregators
+against live state. Emit a FedRAMP package — Rev 5 or 20x, whichever path your
+authorization is on.
 
-CSPs running both Rev 5 and 20x today maintain two parallel sets of compliance
-artifacts. The SSP says "we use FIDO2 MFA," the 20x KSI package says
-"WebAuthn enforced," and they drift because they have no single source of
-truth.
+## The problem this solves
 
-When FedRAMP renames a KSI (which they do every couple of months), every
-hand-curated mapping in the world breaks. Tools that depend on FedRAMP
-content can't compete by trying to stay current manually — they have to be
-architecturally subscribed to the source of truth.
+Compliance documentation is hand-typed today. An engineer reads the AWS console,
+writes a paragraph in Word saying "we use FIDO2 hardware keys," and a 3PAO reads
+that paragraph and tries to verify it. The paragraph and the live system drift
+apart. Nobody catches it until the next assessment.
 
-## The fix
+The fix is to **never let humans hand-type the implementation status**. Instead:
 
-You author a **capability** once — the actual security claim about your
-system — and the toolkit generates whatever framework artifact the audience
-needs.
+1. **Connectors** call the source system (Okta, AWS IAM, KMS, CloudTrail, etc.)
+   and return raw evidence.
+2. **Aggregators** apply deterministic rules to that evidence and emit one
+   per-control determination — with a timestamp, a real metric, and the live
+   numbers ("3/3 privileged users compliant; 4/4 total humans compliant").
+3. **Renderers** take those determinations and emit whatever FedRAMP-shaped
+   document the CSP needs.
 
-```yaml
-# capabilities/iam/mfa-phishing-resistant.yaml
-id: cap-mfa-phishing-resistant
-capability_statement: |
-  All human user authentication requires phishing-resistant MFA using
-  FIDO2/WebAuthn hardware keys, enforced at the IdP with no bypass path.
-satisfies:
-  fedramp_20x:
-    - { ksi: KSI-IAM-01, coverage: full }
-  fedramp_rev5:
-    - { control: IA-2, coverage: full }
-    - { control: IA-2(1), coverage: full }
-  soc2:
-    - { criterion: CC6.1 }
-```
+The implementation status is **observed**, not asserted. A 3PAO reviewing the
+output can re-run the tool and get byte-identical results, because it's
+deterministic Python — not an LLM reasoning over the evidence.
 
-One file. Three frameworks. The Rev 5 SSP, the 20x package, and the SOC 2
-description all stay consistent because they're rendered from the same
-source.
+## Pick your FedRAMP path
 
-## How it stays current
+A CSP picks **one** FedRAMP path. The toolkit supports both, so you don't have
+to refactor your authoring layer if you change paths or migrate from Rev 5 → 20x:
+
+| Path | Output | When you'd use it |
+|---|---|---|
+| **Rev 5 (traditional)** | Word SSP (`.docx`) | What most CSPs submit today. 3PAO reviews the Word doc. |
+| **Rev 5 (machine-readable)** | OSCAL 1.2.0 JSON | FedRAMP PMO has signaled they will mandate machine-readable Rev 5 packages. OSCAL is the most likely target since NIST + FedRAMP already publish OSCAL profiles for the Rev 5 baselines. |
+| **20x** | FRMR JSON (FedRAMP machine-readable) | The new authorization path. Phase 2 pilot ended March 2026; general availability later in 2026. |
+
+You **don't run more than one path at a time** — that's not how FedRAMP works.
+But because the source is the same set of aggregators, you can switch paths
+later without rewriting any compliance logic. That's the actual value:
+**future-proofing your evidence pipeline against PMO direction.**
+
+## How updates flow
 
 ```mermaid
 flowchart LR
-  A[FedRAMP publishes<br/>new FRMR release] --> B[Daily sync workflow<br/>opens a PR]
+  A[FedRAMP publishes<br/>a new release] --> B[Daily sync workflow<br/>opens a PR]
   B --> C{Drift tests}
   C -->|pass| D[Merge — nothing else to do]
-  C -->|fail| E[Comment names broken capabilities]
-  E --> F[Human updates the capability]
+  C -->|fail| E[PR comment names<br/>broken aggregators]
+  E --> F[Engineer updates<br/>the aggregator]
   F --> C
 ```
 
@@ -56,10 +59,11 @@ The cost of a FedRAMP release becomes a PR review, not a content rewrite.
 
 ## Browse the catalog
 
-- [**Capabilities catalog**](capabilities.md) — every authored capability with its framework mappings
-- [**Coverage matrix**](coverage.md) — which KSIs and controls are covered, which aren't
-- [**Architecture**](ARCHITECTURE.md) — three-layer separation that keeps this from going stale
-- [**3PAO Validation**](3pao-validated.md) — provenance map of which patterns have cleared real assessments
+- [**Capabilities catalog**](capabilities.md) — every aggregator with its control coverage
+- [**Coverage matrix**](coverage.md) — which Rev 5 controls and KSIs have aggregators
+- [**Architecture**](ARCHITECTURE.md) — connector / aggregator / renderer separation
+- [**3PAO Validation**](3pao-validated.md) — provenance map of validated patterns
+- [**Related work**](related-work.md) — how this relates to other GRC engineering projects
 
 ## Quick start
 
@@ -68,18 +72,19 @@ git clone https://github.com/NPounds711/grc-toolkit.git
 cd grc-toolkit
 pip install -r requirements.txt
 
-# Generate a Rev 5 SSP fragment (Word doc)
-python -m renderers.rev5_ssp --out samples/ssp.docx
+# Run the full pipeline against fixtures (no AWS / Okta credentials required)
+pytest -v
 
-# Generate a 20x machine-readable package (JSON)
-python -m renderers.fedramp_20x --out samples/20x.json \
-    --csp "Acme Federal" --cso "Acme Workspace" --impact Low
+# Render whichever output your FedRAMP path requires:
+python -m renderers.rev5_ssp   --out samples/rev5_ssp.docx        --fixtures tests/fixtures
+python -m renderers.oscal_ssp  --out samples/rev5_oscal.json      --fixtures tests/fixtures --impact Moderate
+python -m renderers.fedramp_20x --out samples/20x.json            --fixtures tests/fixtures
 ```
 
-See [Contributing](https://github.com/NPounds711/grc-toolkit/blob/main/CONTRIBUTING.md)
-for how to add a capability, evidence collector, or renderer.
+To run against your real cloud and SaaS state, set the connector env vars
+(`OKTA_DOMAIN`, `OKTA_API_TOKEN`, `AWS_PROFILE`, …) and drop the `--fixtures` flag.
 
 ## License
 
 Apache 2.0. **This tool produces evidence and artifacts. A 3PAO must still
-attest. Nothing here is legal or compliance advice.**
+attest. Nothing in this repo is legal or compliance advice.**
