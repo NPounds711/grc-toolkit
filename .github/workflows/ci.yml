@@ -29,24 +29,38 @@ jobs:
       - name: Run all tests
         run: pytest -v
 
-      - name: Render Rev 5 SSP Word fragment (fixture-backed)
+      - name: Render Rev 5 Word SSP (fixture-backed)
         run: |
           mkdir -p samples
           python -m renderers.rev5_ssp \
-            --out samples/rev5_ssp_fragment.docx \
+            --out samples/rev5_ssp.docx \
             --fixtures tests/fixtures
 
-      - name: Render Rev 5 OSCAL SSP (machine-readable Rev 5, fixture-backed)
+      - name: Render Rev 5 machine-readable JSON (fixture-backed)
+        run: |
+          python -m renderers.rev5_machine_readable \
+            --out samples/rev5.json \
+            --fixtures tests/fixtures \
+            --impact Moderate
+
+      - name: Render Rev 5 machine-readable YAML (fixture-backed)
+        run: |
+          python -m renderers.rev5_machine_readable \
+            --out samples/rev5.yaml \
+            --fixtures tests/fixtures \
+            --impact Moderate
+
+      - name: Render Rev 5 OSCAL SSP (fixture-backed)
         run: |
           python -m renderers.oscal_ssp \
-            --out samples/rev5_oscal_ssp.json \
+            --out samples/rev5_oscal.json \
             --fixtures tests/fixtures \
             --impact Moderate
 
       - name: Render 20x FRMR package (fixture-backed)
         run: |
           python -m renderers.fedramp_20x \
-            --out samples/20x_package.json \
+            --out samples/20x.json \
             --fixtures tests/fixtures
 
       - name: Upload sample artifacts

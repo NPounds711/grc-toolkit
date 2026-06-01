@@ -19,20 +19,21 @@ The implementation status is **observed**, not asserted. A 3PAO can re-run the t
 A CSP picks **one** FedRAMP path. The toolkit supports both today, so you don't have to refactor your authoring layer if you change paths or migrate from Rev 5 to 20x later:
 
 - **Rev 5 (traditional)** — Submit a Word SSP for 3PAO review. What most CSPs do today.
-- **Rev 5 (machine-readable)** — FedRAMP PMO has signaled they will mandate machine-readable Rev 5 packages, most likely on OSCAL since NIST + FedRAMP already publish OSCAL profiles for the Rev 5 baselines.
+- **Rev 5 (machine-readable)** — FedRAMP PMO has stated machine-readable Rev 5 submissions can be in **JSON, YAML, or OSCAL**. The toolkit emits all three from the same source.
 - **20x** — Submit a FRMR JSON package keyed by KSI. Optional today (Phase 2 pilot ended March 2026); general availability later in 2026.
 
 You **don't run more than one path at a time** — that's not how FedRAMP works. But because the source is the same set of aggregators, switching paths later doesn't require rewriting any compliance logic. That's the actual value: **future-proofing your evidence pipeline against PMO direction.**
 
-The three renderers all consume the same determinations:
+The renderers all consume the same determinations:
 
 | Output | Format | Audience | Status |
 |---|---|---|---|
 | `rev5_ssp.py` | Word (`.docx`) | Traditional Rev 5 3PAO review | Working |
-| `oscal_ssp.py` | OSCAL 1.2.0 JSON | Machine-readable Rev 5 (PMO-mandated direction) | Working |
+| `rev5_machine_readable.py` | JSON or YAML | PMO-permitted machine-readable Rev 5 | Working |
+| `oscal_ssp.py` | OSCAL 1.2.0 JSON | PMO-permitted machine-readable Rev 5 (NIST schema) | Working |
 | `fedramp_20x.py` | FRMR JSON | FedRAMP 20x submission | Working |
 
-The same capability author once, render to whichever path your customer demands.
+Same capability authored once. Render to whichever output your customer demands.
 
 ## Architecture
 
@@ -95,7 +96,7 @@ Three properties make this hold up over time:
 | `connectors/` | Boundary to cloud / SaaS APIs. No interpretation. Returns raw evidence dicts. Supports fixture mode for CI/demos. | Engineers |
 | `capabilities/` | Routing manifests — point at an aggregator and declare framework mappings | Engineers |
 | `manual-controls/` | Human-attested controls + attached document evidence | GRC / compliance leads |
-| `renderers/` | One output format per file (Rev 5 SSP, 20x FRMR JSON, OSCAL planned) | Engineers (one per format) |
+| `renderers/` | One output format per file (Rev 5 Word, Rev 5 JSON/YAML, OSCAL, 20x FRMR) | Engineers (one per format) |
 | `sync/` | Daily sync of FedRAMP/docs and RFC watchers | Maintainers |
 | `schemas/` | JSON Schemas (finding schema borrowed from GRCEngClub with attribution) | Engineers |
 | `tests/` | Schema validation, drift tests, aggregator tests with fixtures | Engineers |
@@ -116,10 +117,12 @@ python -m renderers.shared.capability_loader
 pytest -v
 
 # --- Rev 5 path ---
-# Word SSP fragment for traditional 3PAO review
+# Word SSP for traditional 3PAO review
 python -m renderers.rev5_ssp --out samples/rev5_ssp.docx --fixtures tests/fixtures
 
-# OSCAL 1.2.0 SSP for machine-readable Rev 5 (PMO direction)
+# Machine-readable Rev 5 — JSON, YAML, or OSCAL (PMO permits all three)
+python -m renderers.rev5_machine_readable --out samples/rev5.json --fixtures tests/fixtures
+python -m renderers.rev5_machine_readable --out samples/rev5.yaml --fixtures tests/fixtures
 python -m renderers.oscal_ssp --out samples/rev5_oscal.json --fixtures tests/fixtures \
     --csp "Acme Federal" --cso "Acme Workspace" --impact Moderate
 

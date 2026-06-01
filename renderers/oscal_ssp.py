@@ -1,14 +1,15 @@
 """
 OSCAL System Security Plan (SSP) renderer — machine-readable Rev 5 output.
 
-OSCAL is the format NIST and FedRAMP have publicly committed to for
-machine-readable security documentation. As FedRAMP transitions to
-mandating machine-readable Rev 5 packages (separate from the 20x FRMR
-shape), OSCAL SSP is the most likely target format.
+FedRAMP PMO has stated machine-readable Rev 5 submissions can be in
+JSON, YAML, or OSCAL. OSCAL is the schema NIST + FedRAMP have already
+published profiles for (Low / Moderate / High), so it's a natural fit
+when a CSP wants their submission validatable against the NIST schema.
+The simpler JSON / YAML shape is in renderers/rev5_machine_readable.py.
 
 This renderer emits an OSCAL 1.2.0 SSP document. The control-implementation
-section is populated from the same ControlDetermination objects the Word
-and 20x renderers consume — author once, render to any FedRAMP path.
+section is populated from the same ControlDetermination objects every
+other renderer consumes — author once, render to any FedRAMP path.
 
 Scope: this is the SSP fragment that the toolkit can populate from
 observed state. System characteristics (boundary, system info, FIPS-199

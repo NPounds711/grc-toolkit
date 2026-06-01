@@ -32,10 +32,10 @@ deterministic Python — not an LLM reasoning over the evidence.
 A CSP picks **one** FedRAMP path. The toolkit supports both, so you don't have
 to refactor your authoring layer if you change paths or migrate from Rev 5 → 20x:
 
-| Path | Output | When you'd use it |
+| Path | Outputs the toolkit emits | When you'd use it |
 |---|---|---|
 | **Rev 5 (traditional)** | Word SSP (`.docx`) | What most CSPs submit today. 3PAO reviews the Word doc. |
-| **Rev 5 (machine-readable)** | OSCAL 1.2.0 JSON | FedRAMP PMO has signaled they will mandate machine-readable Rev 5 packages. OSCAL is the most likely target since NIST + FedRAMP already publish OSCAL profiles for the Rev 5 baselines. |
+| **Rev 5 (machine-readable)** | JSON, YAML, or OSCAL 1.2.0 | FedRAMP PMO has stated machine-readable Rev 5 submissions can be in JSON, YAML, or OSCAL. The toolkit emits all three from the same source. |
 | **20x** | FRMR JSON (FedRAMP machine-readable) | The new authorization path. Phase 2 pilot ended March 2026; general availability later in 2026. |
 
 You **don't run more than one path at a time** — that's not how FedRAMP works.
@@ -76,9 +76,11 @@ pip install -r requirements.txt
 pytest -v
 
 # Render whichever output your FedRAMP path requires:
-python -m renderers.rev5_ssp   --out samples/rev5_ssp.docx        --fixtures tests/fixtures
-python -m renderers.oscal_ssp  --out samples/rev5_oscal.json      --fixtures tests/fixtures --impact Moderate
-python -m renderers.fedramp_20x --out samples/20x.json            --fixtures tests/fixtures
+python -m renderers.rev5_ssp              --out samples/rev5_ssp.docx   --fixtures tests/fixtures
+python -m renderers.rev5_machine_readable --out samples/rev5.json       --fixtures tests/fixtures
+python -m renderers.rev5_machine_readable --out samples/rev5.yaml       --fixtures tests/fixtures
+python -m renderers.oscal_ssp             --out samples/rev5_oscal.json --fixtures tests/fixtures --impact Moderate
+python -m renderers.fedramp_20x           --out samples/20x.json        --fixtures tests/fixtures
 ```
 
 To run against your real cloud and SaaS state, set the connector env vars
