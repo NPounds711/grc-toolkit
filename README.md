@@ -1,27 +1,25 @@
 # grc-toolkit
 
-**Deterministic, multi-cloud FedRAMP Rev 5 + 20x toolkit. Connectors pull live state from AWS / GCP / Azure / Okta / SIEM / IdP; aggregators turn that state into reproducible per-control determinations; renderers emit Rev 5 SSPs and 20x packages from the same source.**
+**Pick your FedRAMP path — Rev 5 or 20x. Either way, your source of truth doesn't change.** Deterministic Python aggregators pull live state from AWS / GCP / Azure / Okta / SIEM / IdP, turn it into reproducible per-control determinations, and emit whichever output format the PMO expects: Word SSP for traditional Rev 5 review, OSCAL JSON for machine-readable Rev 5, FRMR JSON for 20x.
 
 ## What problem this solves
 
-A CSP getting authorized for FedRAMP today has to write essentially the
-same security story in multiple formats:
+FedRAMP has two parallel authorization paths right now:
 
-- A multi-hundred-page Rev 5 SSP (Word) for traditional 3PAO review
-- A FedRAMP 20x machine-readable package (FRMR JSON) for the new authorization path
-- A SOC 2 description for commercial customers
-- Optionally an OSCAL doc for eMASS / automated authorization workflows
+- **Rev 5** (the traditional path) — most CSPs are here today. Submission is currently a Word SSP for 3PAO review. **FedRAMP PMO has signaled they will mandate machine-readable Rev 5 packages**, most likely landing on OSCAL since NIST + FedRAMP have already published OSCAL profiles for the Rev 5 baselines.
+- **20x** (the new path) — submission is a machine-readable FRMR package keyed by KSI. Optional today (Phase 2 pilot ended March 2026); general availability in Phase 3 later in 2026.
 
-Each is hand-typed today. They drift apart — the Word doc says "we use
-FIDO2 hardware keys," the JSON says "WebAuthn enforced," the SOC 2
-description says "phishing-resistant authentication." All describe the
-same thing. Auditors get confused. Engineers re-type the same security
-story three times per release.
+In practice a CSP picks one path. But the *next* CSP might pick the other, and your current Rev 5 CSP will likely need to migrate to 20x within the next two years. **The toolkit's job: make sure the *source* you write is the same regardless of which path you're on.**
 
-**`grc-toolkit` does one thing**: given credentials to a CSP's stack
-(AWS + GCP + Azure + Okta + GitHub + SIEM + …), it determines whether
-each FedRAMP control is implemented by looking at the live system, and
-emits Rev 5 SSP + 20x package + OSCAL — all in sync, all reproducible.
+That source is a **capability** — a small Python module (an aggregator) that knows how to look at the live system, decide whether a control area is implemented, and emit one ControlDetermination per FedRAMP control it covers. The three renderers all consume the same determinations:
+
+| Output | Format | Audience | Status |
+|---|---|---|---|
+| `rev5_ssp.py` | Word (`.docx`) | Traditional Rev 5 3PAO review | Working |
+| `oscal_ssp.py` | OSCAL 1.2.0 JSON | Machine-readable Rev 5 (PMO-mandated direction) | Working |
+| `fedramp_20x.py` | FRMR JSON | FedRAMP 20x submission | Working |
+
+The same capability author once, render to whichever path your customer demands.
 
 ## Architecture
 
@@ -104,10 +102,16 @@ python -m renderers.shared.capability_loader
 # Run all tests (uses tests/fixtures/ — no AWS/Okta credentials required)
 pytest -v
 
-# Generate a Rev 5 SSP fragment (Word) using fixtures
-python -m renderers.rev5_ssp --out samples/ssp.docx --fixtures tests/fixtures
+# --- Rev 5 path ---
+# Word SSP fragment for traditional 3PAO review
+python -m renderers.rev5_ssp --out samples/rev5_ssp.docx --fixtures tests/fixtures
 
-# Generate a 20x machine-readable package (JSON) using fixtures
+# OSCAL 1.2.0 SSP for machine-readable Rev 5 (PMO direction)
+python -m renderers.oscal_ssp --out samples/rev5_oscal.json --fixtures tests/fixtures \
+    --csp "Acme Federal" --cso "Acme Workspace" --impact Moderate
+
+# --- 20x path ---
+# FRMR machine-readable package
 python -m renderers.fedramp_20x --out samples/20x.json --fixtures tests/fixtures \
     --csp "Acme Federal" --cso "Acme Workspace" --impact Low
 ```
