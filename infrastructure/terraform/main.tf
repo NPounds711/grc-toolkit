@@ -96,6 +96,27 @@ resource "aws_cloudfront_origin_access_control" "site" {
   signing_protocol                  = "sigv4"
 }
 
+# Rewrites /capabilities/ to /capabilities/index.html so MkDocs-style
+# directory URLs work with an S3 origin behind CloudFront with OAC.
+resource "aws_cloudfront_function" "rewrite_directory_urls" {
+  name    = "${replace(var.site_bucket_name, "-", "_")}_rewrite_index"
+  runtime = "cloudfront-js-2.0"
+  comment = "Append index.html to directory-style URLs."
+  publish = true
+  code    = <<-EOT
+    function handler(event) {
+      var request = event.request;
+      var uri = request.uri;
+      if (uri.endsWith('/')) {
+        request.uri = uri + 'index.html';
+      } else if (!uri.includes('.')) {
+        request.uri = uri + '/index.html';
+      }
+      return request;
+    }
+  EOT
+}
+
 resource "aws_cloudfront_distribution" "site" {
   enabled             = true
   is_ipv6_enabled     = true
@@ -116,6 +137,11 @@ resource "aws_cloudfront_distribution" "site" {
     cached_methods         = ["GET", "HEAD"]
     compress               = true
     cache_policy_id        = "658327ea-f89d-4fab-a63d-7e88639e58f6" # Managed-CachingOptimized
+
+    function_association {
+      event_type   = "viewer-request"
+      function_arn = aws_cloudfront_function.rewrite_directory_urls.arn
+    }
   }
 
   custom_error_response {
