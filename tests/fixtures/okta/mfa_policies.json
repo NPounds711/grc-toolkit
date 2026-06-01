@@ -1,0 +1,12 @@
+[
+  {
+    "id": "00p1aaaa",
+    "name": "All Users — Phishing-Resistant MFA",
+    "status": "ACTIVE",
+    "settings": {
+      "factors": {
+        "webauthn": {"enroll": {"self": "REQUIRED"}, "consent": {"type": "NONE"}}
+      }
+    }
+  }
+]

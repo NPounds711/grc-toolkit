@@ -1,13 +1,14 @@
 """
 FedRAMP 20x machine-readable package renderer.
 
-Reads the SAME capabilities the SSP renderer reads, emits FRMR-compatible
-JSON. Structure follows the pattern established by Phase 1/2 public
-submissions (Paramify, Knox, Confluent) and FedRAMP's machine-readable
-schema. Adapter pattern — when FedRAMP renames `indicator` → `theme`
-(as happened in v0.9.0-beta), only this file changes.
+Consumes the same capability index as the SSP renderer; emits FRMR-style
+JSON. For aggregator-backed capabilities, each KSI block carries the
+aggregator's live-state determination (status, statement, metrics,
+timestamp) — not a hand-typed implementation claim.
 
-Run:  python -m renderers.fedramp_20x --out samples/20x_package.json
+Run:
+    python -m renderers.fedramp_20x --out samples/20x_package.json
+    python -m renderers.fedramp_20x --out samples/20x_package.json --fixtures tests/fixtures
 """
 
 from __future__ import annotations
@@ -15,29 +16,22 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
+from aggregators._base import AggregatorRunContext
 from renderers.shared.capability_loader import (
     Capability,
     index_by_ksi,
     load_all,
 )
+from renderers.shared.determinations import DeterminationResolver, ResolvedCapabilityEntry
 
 
 def _digital_signature(payload: dict) -> str:
-    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)
     return hashlib.sha256(canonical.encode()).hexdigest()
-
-
-def _ksi_short_name(ksi: str) -> str:
-    """KSI-IAM-01 → IAM-01."""
-    return ksi.replace("KSI-", "")
-
-
-def _ksi_category_from_id(ksi: str) -> str:
-    """KSI-IAM-01 → 'IAM' (and the friendly name is added downstream)."""
-    return ksi.split("-")[1]
 
 
 CATEGORY_NAMES = {
@@ -55,25 +49,42 @@ CATEGORY_NAMES = {
 }
 
 
+def _short_name(ksi: str) -> str:
+    return ksi.replace("KSI-", "")
+
+
+def _category(ksi: str) -> str:
+    return ksi.split("-")[1]
+
+
 def render(
     csp_name: str = "Example CSP",
     cso_name: str = "Example Cloud Service Offering",
     impact: str = "Low",
+    fixtures_dir: str | None = None,
+    strict_freshness: bool = False,
 ) -> dict:
     caps = load_all()
     idx = index_by_ksi(caps)
 
-    # Group KSIs by category
+    ctx = AggregatorRunContext(
+        fixture_mode=bool(fixtures_dir),
+        fixture_dir=fixtures_dir or "",
+        strict_freshness=strict_freshness,
+        run_id=str(uuid.uuid4()),
+    )
+    resolver = DeterminationResolver(ctx)
+
     by_category: dict[str, list[str]] = {}
     for ksi in idx:
-        cat = _ksi_category_from_id(ksi)
-        by_category.setdefault(cat, []).append(ksi)
+        by_category.setdefault(_category(ksi), []).append(ksi)
 
     ksi_blocks = []
     for cat in sorted(by_category):
         validations = []
         for ksi in sorted(by_category[cat]):
-            validations.append(_render_validation(ksi, idx[ksi]))
+            entries = resolver.for_ksi(ksi, idx[ksi])
+            validations.append(_render_validation(ksi, entries))
         ksi_blocks.append({
             "name": CATEGORY_NAMES.get(cat, cat),
             "shortName": cat,
@@ -98,56 +109,65 @@ def render(
             "frmrVersion": "v0.9.0-beta",
             "generatedAt": datetime.now(timezone.utc).isoformat(),
             "generator": "grc-toolkit",
+            "runId": ctx.run_id,
             "assessments": [assessment],
         }
     }
 
 
-def _render_validation(ksi: str, caps: list[Capability]) -> dict:
-    """One KSI may be satisfied by N capabilities; merge them."""
-    # Pull the per-cap coverage rows for this exact KSI
-    coverage_rows = []
-    for cap in caps:
-        for entry in cap.ksis():
-            if entry["ksi"] == ksi:
-                coverage_rows.append((cap, entry))
+def _render_validation(ksi: str, entries: list[ResolvedCapabilityEntry]) -> dict:
+    aggregator_entries = [e for e in entries if e.determination]
+    declared_entries = [e for e in entries if not e.determination]
 
-    statements = [cap.statement for cap, _ in coverage_rows]
+    # Status rollup
+    all_statuses = {e.determination.status for e in aggregator_entries}
+    # For declared entries, fall back to per-control declared status if present
+    for e in declared_entries:
+        for ksi_entry in e.capability.ksis():
+            if ksi_entry["ksi"] == ksi:
+                # 20x KSI mappings don't carry implementation_status — use coverage
+                cov = ksi_entry.get("coverage", "full")
+                all_statuses.add(
+                    "Implemented" if cov == "full" else "Partially Implemented"
+                )
+    if "Partially Implemented" in all_statuses:
+        rollup_status = "Partially Implemented"
+    elif "Planned" in all_statuses or "Inconclusive" in all_statuses:
+        rollup_status = "Planned"
+    elif all_statuses:
+        rollup_status = "Implemented"
+    else:
+        rollup_status = "Not Documented"
 
-    coverage_levels = {entry["coverage"] for _, entry in coverage_rows}
-    overall_coverage = (
-        "full" if coverage_levels == {"full"}
-        else "partial" if "partial" in coverage_levels or "contributes_to" in coverage_levels
-        else "full"
-    )
-
-    # Evidence is union of all evidence across capabilities
-    evidence_entries = []
-    for cap, _ in coverage_rows:
-        for ev in cap.evidence():
-            evidence_entries.append({
-                "id": ev["id"],
-                "type": ev["type"],
-                "source": ev["source"],
-                "schedule": ev.get("schedule", "on-demand"),
-                "validationOrigin": ev.get("validation_method", "automated"),
-                "collector": ev.get("collector"),
-                "validationRule": ev.get("validation_rule"),
-                "fromCapability": cap.id,
-            })
+    # Statements + evidence
+    sources: list[dict] = []
+    for e in aggregator_entries:
+        d = e.determination
+        sources.append({
+            "capabilityId": e.capability.id,
+            "source": "aggregator",
+            "aggregator": e.capability.aggregator_path,
+            "status": d.status,
+            "observedAt": d.observed_at,
+            "statement": d.statement,
+            "metrics": d.metrics,
+            "nonCompliant": d.non_compliant,
+            "evidenceRefs": d.evidence_refs,
+        })
+    for e in declared_entries:
+        sources.append({
+            "capabilityId": e.capability.id,
+            "source": "declared",
+            "statement": e.declared_statement,
+            "evidenceRefs": [ev["id"] for ev in e.capability.evidence()],
+        })
 
     return {
         "ksiId": ksi,
-        "shortName": _ksi_short_name(ksi),
-        "implementationStatus": "Implemented" if overall_coverage == "full" else "Partially Implemented",
-        "coverage": overall_coverage,
-        "implementation": "\n\n".join(statements),
-        "contributingCapabilities": [cap.id for cap, _ in coverage_rows],
-        "evidence": evidence_entries,
-        "rationale": (
-            None if overall_coverage == "full"
-            else f"Coverage is {overall_coverage}; see contributing capabilities for scope notes."
-        ),
+        "shortName": _short_name(ksi),
+        "implementationStatus": rollup_status,
+        "contributingCapabilities": [e.capability.id for e in entries],
+        "sources": sources,
     }
 
 
@@ -157,11 +177,19 @@ def main():
     ap.add_argument("--csp", default="Example CSP")
     ap.add_argument("--cso", default="Example Cloud Service Offering")
     ap.add_argument("--impact", default="Low")
+    ap.add_argument("--fixtures", default=None)
+    ap.add_argument("--strict-freshness", action="store_true")
     args = ap.parse_args()
 
-    pkg = render(args.csp, args.cso, args.impact)
+    pkg = render(
+        args.csp,
+        args.cso,
+        args.impact,
+        fixtures_dir=args.fixtures,
+        strict_freshness=args.strict_freshness,
+    )
     args.out.parent.mkdir(parents=True, exist_ok=True)
-    args.out.write_text(json.dumps(pkg, indent=2))
+    args.out.write_text(json.dumps(pkg, indent=2, default=str))
     print(f"Wrote {args.out}")
 
 

@@ -1,33 +1,36 @@
 """
 Rev 5 SSP renderer.
 
-Reads capabilities and produces a Word document with control-implementation
-statements in the format FedRAMP Rev 5 SSPs use. Multiple capabilities can
-roll up under one control — they get concatenated cleanly.
+Produces a Word document with control-implementation statements in the
+format FedRAMP Rev 5 SSPs use. Aggregator-backed capabilities contribute
+live-state determinations (timestamped, with real numbers); declared-mode
+capabilities contribute their hand-written narrative.
 
-Run:  python -m renderers.rev5_ssp --out samples/rev5_ssp_fragment.docx \\
-            --controls IA-2,IA-2\\(1\\),AC-2,AC-6
+Multiple capabilities can roll up under one control — they concatenate.
+
+Run:
+    python -m renderers.rev5_ssp --out samples/rev5_ssp_fragment.docx
+    python -m renderers.rev5_ssp --out samples/rev5_ssp_fragment.docx --fixtures tests/fixtures
 """
 
 from __future__ import annotations
 
 import argparse
 import re
+import uuid
 from pathlib import Path
 
 from docx import Document
 from docx.enum.table import WD_ALIGN_VERTICAL
-from docx.shared import Inches, Pt, RGBColor
+from docx.shared import Pt, RGBColor
 
+from aggregators._base import AggregatorRunContext
 from renderers.shared.capability_loader import (
-    Capability,
     index_by_rev5_control,
     load_all,
 )
+from renderers.shared.determinations import DeterminationResolver, ResolvedCapabilityEntry
 
-# Rev 5 control families and their full names — synced from NIST SP 800-53r5.
-# In production this comes from frameworks/fedramp-rev5/controls.json which
-# is itself synced from NIST/OSCAL-content nightly.
 CONTROL_FAMILIES = {
     "AC": "Access Control",
     "AT": "Awareness and Training",
@@ -53,77 +56,11 @@ CONTROL_FAMILIES = {
 
 
 def _control_family(control_id: str) -> str:
-    """IA-2(1) -> 'Identification and Authentication'."""
     prefix = re.match(r"^([A-Z]+)", control_id).group(1)
     return CONTROL_FAMILIES.get(prefix, "Unknown")
 
 
-def _rollup_status(entries: list[dict]) -> str:
-    """If any capability is Partially Implemented, the control is Partial."""
-    statuses = {e.get("implementation_status", "Implemented") for e in entries}
-    if "Planned" in statuses:
-        return "Planned"
-    if "Partially Implemented" in statuses:
-        return "Partially Implemented"
-    if "Alternative" in statuses:
-        return "Alternative"
-    return "Implemented"
-
-
-def render(
-    output_path: Path,
-    requested_controls: list[str] | None = None,
-) -> Path:
-    caps = load_all()
-    idx = index_by_rev5_control(caps)
-
-    if requested_controls:
-        idx = {c: caps for c, caps in idx.items() if c in requested_controls}
-
-    doc = Document()
-
-    # ---- Document defaults ----
-    style = doc.styles["Normal"]
-    style.font.name = "Arial"
-    style.font.size = Pt(11)
-
-    # ---- Title ----
-    title = doc.add_heading("System Security Plan — Control Implementation Statements", 0)
-    for run in title.runs:
-        run.font.color.rgb = RGBColor(0x1F, 0x3A, 0x5F)
-
-    p = doc.add_paragraph()
-    p.add_run(
-        "Generated from canonical capability definitions. Do not edit this "
-        "document directly — modify the source capability YAML and regenerate. "
-        "See provenance section under each control for source attribution."
-    ).italic = True
-
-    # Group controls by family for readability
-    by_family: dict[str, list[str]] = {}
-    for ctrl in sorted(idx.keys(), key=_sort_key):
-        family = _control_family(ctrl)
-        by_family.setdefault(family, []).append(ctrl)
-
-    for family in sorted(by_family.keys()):
-        doc.add_heading(family, level=1)
-
-        for control_id in by_family[family]:
-            entries_for_control = []
-            for cap in idx[control_id]:
-                for e in cap.rev5_controls():
-                    if e["control"] == control_id:
-                        entries_for_control.append((cap, e))
-
-            _render_control(doc, control_id, entries_for_control)
-
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    doc.save(output_path)
-    return output_path
-
-
 def _sort_key(control_id: str):
-    """Sort AC-2 before AC-2(1) before AC-6."""
     m = re.match(r"^([A-Z]+)-(\d+)(?:\((\d+)\))?", control_id)
     if not m:
         return (control_id,)
@@ -131,13 +68,85 @@ def _sort_key(control_id: str):
     return (family, int(num), int(enh) if enh else 0)
 
 
-def _render_control(doc, control_id: str, entries: list[tuple[Capability, dict]]):
-    """Render one control's section. Multiple capabilities concatenate."""
+def _rollup_status(entries: list[ResolvedCapabilityEntry]) -> str:
+    statuses: set[str] = set()
+    for e in entries:
+        if e.determination:
+            statuses.add(e.determination.status)
+        else:
+            for ctrl_entry in e.capability.rev5_controls():
+                s = ctrl_entry.get("implementation_status")
+                if s:
+                    statuses.add(s)
+    if "Planned" in statuses:
+        return "Planned"
+    if "Partially Implemented" in statuses:
+        return "Partially Implemented"
+    if "Inconclusive" in statuses:
+        return "Inconclusive"
+    if "Alternative Implementation" in statuses:
+        return "Alternative Implementation"
+    return "Implemented" if statuses else "Not Documented"
+
+
+def render(
+    output_path: Path,
+    requested_controls: list[str] | None = None,
+    fixtures_dir: str | None = None,
+    strict_freshness: bool = False,
+) -> Path:
+    caps = load_all()
+    idx = index_by_rev5_control(caps)
+
+    if requested_controls:
+        idx = {c: lst for c, lst in idx.items() if c in requested_controls}
+
+    ctx = AggregatorRunContext(
+        fixture_mode=bool(fixtures_dir),
+        fixture_dir=fixtures_dir or "",
+        strict_freshness=strict_freshness,
+        run_id=str(uuid.uuid4()),
+    )
+    resolver = DeterminationResolver(ctx)
+
+    doc = Document()
+
+    style = doc.styles["Normal"]
+    style.font.name = "Arial"
+    style.font.size = Pt(11)
+
+    title = doc.add_heading("System Security Plan — Control Implementation Statements", 0)
+    for run in title.runs:
+        run.font.color.rgb = RGBColor(0x1F, 0x3A, 0x5F)
+
+    p = doc.add_paragraph()
+    p.add_run(
+        "Generated from canonical capability definitions. Aggregator-backed "
+        "capabilities reflect observed live state at render time; declared "
+        "capabilities reflect the engineering team's authored statement. Do "
+        "not edit this document directly — modify the source and regenerate."
+    ).italic = True
+
+    by_family: dict[str, list[str]] = {}
+    for ctrl in sorted(idx.keys(), key=_sort_key):
+        by_family.setdefault(_control_family(ctrl), []).append(ctrl)
+
+    for family in sorted(by_family.keys()):
+        doc.add_heading(family, level=1)
+        for control_id in by_family[family]:
+            entries = resolver.for_rev5_control(control_id, idx[control_id])
+            _render_control(doc, control_id, entries)
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    doc.save(output_path)
+    return output_path
+
+
+def _render_control(doc, control_id: str, entries: list[ResolvedCapabilityEntry]):
     doc.add_heading(control_id, level=2)
 
-    # Status table
-    status = _rollup_status([e for _, e in entries])
-    contributing = sorted({cap.id for cap, _ in entries})
+    status = _rollup_status(entries)
+    contributing = sorted({e.capability.id for e in entries})
 
     table = doc.add_table(rows=2, cols=2)
     table.style = "Light Grid Accent 1"
@@ -149,59 +158,58 @@ def _render_control(doc, control_id: str, entries: list[tuple[Capability, dict]]
         for cell in row.cells:
             cell.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
             for para in cell.paragraphs:
-                para.runs[0].font.size = Pt(10) if para.runs else None
+                if para.runs:
+                    para.runs[0].font.size = Pt(10)
 
-    # If any entry specifies parts, list them with the statement (no repetition)
-    parted_entries = [(cap, e) for cap, e in entries if e.get("parts")]
+    for entry in entries:
+        cap = entry.capability
+        flavor = "live-state" if entry.determination else "declared"
+        heading = doc.add_heading(f"{cap.id}", level=3)
+        for r in heading.runs:
+            r.font.size = Pt(11)
+        p = doc.add_paragraph()
+        p.add_run(f"({flavor}) ").italic = True
 
-    if parted_entries:
-        for cap, entry in parted_entries:
-            parts = entry.get("parts", [])
-            parts_label = (
-                f"Addresses part {parts[0]}" if len(parts) == 1
-                else f"Addresses parts {', '.join(parts)}"
-            )
-            doc.add_heading(f"{cap.id}", level=3)
-            p = doc.add_paragraph()
-            p.add_run(parts_label).bold = True
-            doc.add_paragraph(cap.statement)
-
-        # Capabilities without parts on same control
-        unparted = [(cap, e) for cap, e in entries if not e.get("parts")]
-        for cap, _ in unparted:
-            doc.add_heading(f"{cap.id}", level=3)
-            doc.add_paragraph(cap.statement)
-    else:
-        for cap, _ in entries:
-            doc.add_heading(f"{cap.id}", level=3)
-            doc.add_paragraph(cap.statement)
+        if entry.determination:
+            doc.add_paragraph(entry.determination.statement)
+            ts = doc.add_paragraph()
+            ts.add_run(f"Observed at: {entry.determination.observed_at}").italic = True
+        else:
+            doc.add_paragraph(entry.declared_statement)
 
     # Evidence section
     doc.add_heading("Validation Evidence", level=3)
-    for cap, _ in entries:
-        for ev in cap.evidence():
-            p = doc.add_paragraph(style="List Bullet")
-            run = p.add_run(f"{ev['id']}")
-            run.bold = True
-            p.add_run(
-                f" — {ev['type']} from {ev['source']}, "
-                f"{ev.get('schedule', 'on-demand')}, "
-                f"{ev.get('validation_method', 'automated')}"
-            )
+    for entry in entries:
+        if entry.determination:
+            for ref in entry.determination.evidence_refs:
+                p = doc.add_paragraph(style="List Bullet")
+                p.add_run(f"{ref}").bold = True
+                p.add_run(f" — gathered by {entry.capability.aggregator_path}")
+        else:
+            for ev in entry.capability.evidence():
+                p = doc.add_paragraph(style="List Bullet")
+                p.add_run(f"{ev['id']}").bold = True
+                p.add_run(
+                    f" — {ev['type']} from {ev['source']}, "
+                    f"{ev.get('schedule', 'on-demand')}, "
+                    f"{ev.get('validation_method', 'automated')}"
+                )
 
     # Provenance
     doc.add_heading("Provenance", level=3)
-    provs = {cap.id: cap.provenance() for cap, _ in entries}
-    for cap_id, prov in provs.items():
-        bits = [f"FRMR: {prov.get('frmr_version', 'n/a')}",
-                f"last reviewed {prov.get('last_reviewed', 'n/a')}"]
-        for assessment in prov.get("validated_in_assessment", []):
-            bits.append(f"validated in {assessment['csp']}/{assessment['assessor_3pao']} ({assessment['date']})")
+    for entry in entries:
+        prov = entry.capability.provenance()
+        bits = [
+            f"FRMR: {prov.get('frmr_version', 'n/a')}",
+            f"last reviewed {prov.get('last_reviewed', 'n/a')}",
+        ]
+        for a in prov.get("validated_in_assessment", []):
+            bits.append(f"validated in {a['csp']}/{a['assessor_3pao']} ({a['date']})")
         p = doc.add_paragraph(style="List Bullet")
-        p.add_run(f"{cap_id}: ").bold = True
+        p.add_run(f"{entry.capability.id}: ").bold = True
         p.add_run("; ".join(bits))
 
-    doc.add_paragraph()  # spacer
+    doc.add_paragraph()
 
 
 def main():
@@ -209,10 +217,13 @@ def main():
     ap.add_argument("--out", required=True, type=Path)
     ap.add_argument("--controls", default=None,
                     help="Comma-separated list of controls; default = all that have capabilities")
+    ap.add_argument("--fixtures", default=None,
+                    help="Path to a fixtures directory — runs aggregators in fixture mode")
+    ap.add_argument("--strict-freshness", action="store_true")
     args = ap.parse_args()
 
     controls = [c.strip() for c in args.controls.split(",")] if args.controls else None
-    out = render(args.out, controls)
+    out = render(args.out, controls, fixtures_dir=args.fixtures, strict_freshness=args.strict_freshness)
     print(f"Wrote {out}")
 
 

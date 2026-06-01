@@ -1,11 +1,22 @@
 # Schema for a Capability — the canonical source of truth.
 # Every capability file in this repo MUST validate against this schema.
 # Renderers read capabilities; they NEVER hardcode framework-specific text.
+#
+# Two flavors:
+#   aggregator-backed — capability points at an aggregator Python module
+#       which determines implementation status by reading the live cloud state.
+#       The YAML carries no statement; the renderer asks the aggregator at
+#       render time. This is the default for technical controls.
+#
+#   declared           — capability has a hand-written statement. Used for
+#       early-stage placeholders (pending an aggregator) and for legacy
+#       reasons. Manual controls (process / policy / personnel) live under
+#       manual-controls/ with their own schema.
 
 $schema: "http://json-schema.org/draft-07/schema#"
 title: Capability
 type: object
-required: [id, title, capability_statement, satisfies, evidence, provenance]
+required: [id, title, satisfies, provenance]
 properties:
   id:
     type: string
@@ -16,12 +27,21 @@ properties:
     type: string
     description: "Short human-readable name."
 
+  aggregator:
+    type: string
+    pattern: "^aggregators\\.[a-z_][a-z0-9_]*$"
+    description: |
+      Python module path of the aggregator that owns this capability,
+      e.g. aggregators.mfa. When set, the YAML must NOT carry a
+      capability_statement — the aggregator emits the implementation
+      narrative at render time from live state.
+
   capability_statement:
     type: string
     description: |
-      The single source-of-truth narrative describing what is actually
-      true about the system. Renderers may wrap, truncate, or template
-      this — but the underlying claim must remain consistent everywhere.
+      Required when there is no aggregator. Forbidden when aggregator is set.
+      Use this for stub/placeholder capabilities that document intent until
+      an aggregator exists.
 
   applies_when:
     type: object
@@ -32,7 +52,10 @@ properties:
 
   satisfies:
     type: object
-    description: "Cross-framework mappings. Adding a framework is additive."
+    description: |
+      Cross-framework mappings. For aggregator-backed capabilities, this
+      MUST be a subset of the aggregator's declared SUPPORTED_CONTROLS.
+      The loader validates this.
     properties:
       fedramp_20x:
         type: array
@@ -52,7 +75,7 @@ properties:
           properties:
             control: { type: string, description: "e.g. IA-2, IA-2(1), AC-2(7)" }
             coverage: { enum: [full, partial, contributes_to] }
-            parts: { type: array, items: { type: string } }  # a, b, c
+            parts: { type: array, items: { type: string } }  # for legacy declared-mode only
             implementation_status:
               enum: [Implemented, Partially Implemented, Planned, Alternative, Not Applicable]
 
@@ -72,7 +95,10 @@ properties:
 
   evidence:
     type: array
-    description: "Machine-collectible proof. Lives in evidence/."
+    description: |
+      Optional. For aggregator-backed capabilities, the aggregator owns
+      evidence collection — this field can be omitted. Kept for legacy
+      declared-mode capabilities and for documentary references.
     items:
       type: object
       required: [id, type, source]
@@ -113,3 +139,8 @@ properties:
             url: { type: string }
       last_reviewed: { type: string, format: date }
       reviewers: { type: array, items: { type: string } }
+
+# Aggregator/declared invariants enforced by the loader:
+#   aggregator set  → capability_statement forbidden, satisfies must be
+#                     subset of aggregator.SUPPORTED_CONTROLS
+#   aggregator unset → capability_statement required

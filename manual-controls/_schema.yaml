@@ -1,0 +1,89 @@
+# Schema for a Manual Control attestation.
+#
+# Manual controls are claims that can't be derived from a live cloud / SaaS
+# API — personnel security, physical access at the cloud provider's data
+# center, legal review of contracts, policy approval signatures, etc.
+#
+# These are first-class artifacts in the same generated SSP / 20x package
+# alongside aggregator-backed determinations. They carry attached document
+# evidence and a human-signed attestation. Renderers section them
+# distinctly so 3PAOs can tell at a glance which controls are automatically
+# verified vs. attested.
+
+$schema: "http://json-schema.org/draft-07/schema#"
+title: ManualControl
+type: object
+required: [id, title, statement, satisfies, attestation, provenance]
+properties:
+  id:
+    type: string
+    pattern: "^mc-[a-z0-9-]+$"
+    description: "Stable ID. Use mc-<slug>."
+
+  title:
+    type: string
+
+  statement:
+    type: string
+    description: |
+      Human-written narrative describing how the manual control is
+      implemented. Auditor-facing prose. Required.
+
+  satisfies:
+    type: object
+    properties:
+      fedramp_rev5:
+        type: array
+        items:
+          type: object
+          required: [control]
+          properties:
+            control: { type: string }
+            parts:   { type: array, items: { type: string } }
+      fedramp_20x:
+        type: array
+        items:
+          type: object
+          required: [ksi]
+          properties:
+            ksi: { type: string, pattern: "^KSI-[A-Z]+-[0-9]+$" }
+      soc2:
+        type: array
+        items: { type: object, properties: { criterion: { type: string } } }
+
+  evidence_artifacts:
+    type: array
+    description: "Attached documents proving the manual control."
+    items:
+      type: object
+      required: [artifact_id, description]
+      properties:
+        artifact_id: { type: string, description: "Short stable handle within this control" }
+        description: { type: string }
+        file:        { type: string, description: "Path under manual-controls/artifacts/" }
+        retention:   { enum: [perpetual, audit_only, year_3, year_5, year_7] }
+
+  attestation:
+    type: object
+    required: [status, declared_by, declared_at]
+    properties:
+      status:
+        enum: [Implemented, Partially Implemented, Planned, Alternative Implementation, Not Applicable]
+      declared_by:
+        type: string
+        description: "Role or person responsible — e.g., '@security-team', 'CISO'"
+      declared_at:
+        type: string
+        format: date
+      next_review:
+        type: string
+        format: date
+      notes:
+        type: string
+
+  provenance:
+    type: object
+    required: [last_reviewed]
+    properties:
+      last_reviewed: { type: string, format: date }
+      reviewers: { type: array, items: { type: string } }

@@ -1,0 +1,7 @@
+{
+  "Users": 3,
+  "Groups": 2,
+  "Roles": 12,
+  "AccountMFAEnabled": 1,
+  "AccessKeysPerUserQuota": 2
+}

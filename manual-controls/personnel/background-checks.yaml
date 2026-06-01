@@ -1,0 +1,68 @@
+id: mc-personnel-background-checks
+title: Personnel background investigations prior to access
+
+statement: |
+  All personnel with access to federal customer data — whether full-time
+  employees, contractors, or partners — complete a background investigation
+  prior to access being granted to any production system. Investigations
+  are commensurate with the sensitivity of the role: a standard package
+  for all hires, plus an enhanced FBI fingerprint check for personnel
+  with privileged access to federal data boundaries.
+
+  Background investigations are performed by an accredited consumer
+  reporting agency in compliance with the Fair Credit Reporting Act and
+  state-specific employment screening laws. Results are reviewed by the
+  People Operations team; adverse findings trigger a documented review
+  process before any access provisioning occurs.
+
+  Re-investigations are conducted every five years for personnel with
+  continuous privileged access. Personnel with no privileged access on
+  record for 12+ consecutive months are exempt from re-investigation
+  until access is requested.
+
+satisfies:
+  fedramp_rev5:
+    - { control: PS-3, parts: [a, b, c] }
+    - { control: PS-3(1) }
+    - { control: PS-3(3) }
+
+  fedramp_20x:
+    - { ksi: KSI-CED-03 }
+
+  soc2:
+    - { criterion: CC1.4 }
+
+evidence_artifacts:
+  - artifact_id: bg-policy
+    description: "Personnel Security Policy v2.4 (approved 2026-02-15)"
+    file: artifacts/personnel-security-policy-v2.4.pdf
+    retention: perpetual
+
+  - artifact_id: bg-vendor-soc2
+    description: "Background-check vendor SOC 2 Type II report (Sterling, 2025)"
+    file: artifacts/sterling-soc2-type2-2025.pdf
+    retention: year_7
+
+  - artifact_id: bg-completion-log
+    description: |
+      Monthly extract from People Operations system showing every new hire
+      with a 'Background investigation completed' date prior to their
+      access provisioning date. Sanitized — no PII committed to the repo.
+      Path is to the latest export.
+    file: artifacts/bg-completion-log-redacted-2026-05.csv
+    retention: audit_only
+
+attestation:
+  status: Implemented
+  declared_by: "@chief-security-officer"
+  declared_at: 2026-05-15
+  next_review: 2026-11-15
+  notes: |
+    Coalfire reviewed this attestation during the 2025-07 Paramify
+    assessment and accepted it without additional documentation requests.
+
+provenance:
+  last_reviewed: 2026-06-01
+  reviewers:
+    - "@security-team"
+    - "@people-operations"

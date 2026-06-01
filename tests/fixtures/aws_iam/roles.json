@@ -1,0 +1,16 @@
+{
+  "roles": [
+    {
+      "RoleName": "github-actions-docs-deploy",
+      "Arn": "arn:aws:iam::123456789012:role/github-actions-docs-deploy",
+      "MaxSessionDuration": 3600,
+      "Tags": [{"Key": "Privileged", "Value": "true"}]
+    },
+    {
+      "RoleName": "lambda-app-execution",
+      "Arn": "arn:aws:iam::123456789012:role/lambda-app-execution",
+      "MaxSessionDuration": 3600,
+      "Tags": []
+    }
+  ]
+}

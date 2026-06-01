@@ -1,0 +1,43 @@
+{
+  "users": [
+    {
+      "id": "00u1aaa",
+      "status": "ACTIVE",
+      "profile": {"login": "alice@acme.gov", "title": "Senior Security Engineer"},
+      "factors": [
+        {"factorType": "webauthn", "status": "ACTIVE"}
+      ]
+    },
+    {
+      "id": "00u1bbb",
+      "status": "ACTIVE",
+      "profile": {"login": "bob@acme.gov", "title": "Platform Engineer"},
+      "factors": [
+        {"factorType": "webauthn", "status": "ACTIVE"}
+      ]
+    },
+    {
+      "id": "00u1ccc",
+      "status": "ACTIVE",
+      "profile": {"login": "carol@acme.gov", "title": "Compliance Manager"},
+      "factors": [
+        {"factorType": "webauthn", "status": "ACTIVE"}
+      ]
+    },
+    {
+      "id": "00u1ddd",
+      "status": "ACTIVE",
+      "profile": {"login": "dan@acme.gov", "title": "Customer Success"},
+      "factors": [
+        {"factorType": "webauthn", "status": "ACTIVE"},
+        {"factorType": "token:software:totp", "status": "ACTIVE"}
+      ]
+    },
+    {
+      "id": "00u1eee",
+      "status": "STAGED",
+      "profile": {"login": "eve@acme.gov", "title": "New Hire"},
+      "factors": []
+    }
+  ]
+}

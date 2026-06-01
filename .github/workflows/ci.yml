@@ -29,13 +29,18 @@ jobs:
       - name: Run all tests
         run: pytest -v
 
-      - name: Render Rev 5 SSP fragment
+      - name: Render Rev 5 SSP fragment (fixture-backed)
         run: |
           mkdir -p samples
-          python -m renderers.rev5_ssp --out samples/rev5_ssp_fragment.docx
+          python -m renderers.rev5_ssp \
+            --out samples/rev5_ssp_fragment.docx \
+            --fixtures tests/fixtures
 
-      - name: Render 20x package
-        run: python -m renderers.fedramp_20x --out samples/20x_package.json
+      - name: Render 20x package (fixture-backed)
+        run: |
+          python -m renderers.fedramp_20x \
+            --out samples/20x_package.json \
+            --fixtures tests/fixtures
 
       - name: Upload sample artifacts
         if: always()

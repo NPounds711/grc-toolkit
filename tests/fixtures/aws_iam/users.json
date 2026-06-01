@@ -1,0 +1,38 @@
+{
+  "users": [
+    {
+      "UserName": "platform-admin",
+      "UserId": "AIDAEXAMPLE0001",
+      "Arn": "arn:aws:iam::123456789012:user/platform-admin",
+      "Tags": [],
+      "MFADevices": [
+        {"SerialNumber": "arn:aws:iam::123456789012:mfa/platform-admin", "EnableDate": "2026-01-15T00:00:00Z"}
+      ],
+      "AttachedPolicies": [
+        {"PolicyName": "AdministratorAccess", "PolicyArn": "arn:aws:iam::aws:policy/AdministratorAccess"}
+      ]
+    },
+    {
+      "UserName": "billing-readonly",
+      "UserId": "AIDAEXAMPLE0002",
+      "Arn": "arn:aws:iam::123456789012:user/billing-readonly",
+      "Tags": [],
+      "MFADevices": [
+        {"SerialNumber": "arn:aws:iam::123456789012:mfa/billing-readonly", "EnableDate": "2026-02-01T00:00:00Z"}
+      ],
+      "AttachedPolicies": [
+        {"PolicyName": "Billing", "PolicyArn": "arn:aws:iam::aws:policy/job-function/Billing"}
+      ]
+    },
+    {
+      "UserName": "github-actions-deploy",
+      "UserId": "AIDAEXAMPLE0003",
+      "Arn": "arn:aws:iam::123456789012:user/github-actions-deploy",
+      "Tags": [{"Key": "Type", "Value": "service"}],
+      "MFADevices": [],
+      "AttachedPolicies": [
+        {"PolicyName": "PowerUserAccess", "PolicyArn": "arn:aws:iam::aws:policy/PowerUserAccess"}
+      ]
+    }
+  ]
+}
